@@ -1,17 +1,14 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Display,
     sync::mpsc::Receiver,
     time::Duration,
 };
 
 use chrono::{DateTime, Local};
 use eframe::{egui, CreationContext};
-use egui::{
-    plot::{CoordinatesFormatter, Corner, Legend, Line, Plot, Points},
-    Align, CentralPanel, TopBottomPanel,
-};
+use egui::{Align, CentralPanel, TopBottomPanel};
 use egui_extras::StripBuilder;
+use egui_plot::{Legend, Line, Plot, Points};
 use serde::{Deserialize, Serialize};
 
 use crate::{bthome::Object, Update};
@@ -22,7 +19,7 @@ pub fn run(rx: Receiver<Update>) -> anyhow::Result<()> {
     eframe::run_native(
         "BTHome",
         native_options,
-        Box::new(|cc| Box::new(BtHomeApp::new(rx, cc))),
+        Box::new(|cc| Ok(Box::new(BtHomeApp::new(rx, cc)))),
     )
     .unwrap();
 
@@ -130,7 +127,7 @@ impl eframe::App for BtHomeApp {
                         ui.cell(|ui| {
                             ui.label(objtype);
 
-                            let start_time = self.state.start_time.clone();
+                            let start_time = self.state.start_time;
 
                             Plot::new(objtype)
                                 .legend(Legend::default())
@@ -146,10 +143,10 @@ impl eframe::App for BtHomeApp {
                                 .x_axis_formatter(move |val, _range| {
                                     (start_time
                                         + chrono::Duration::from_std(Duration::from_secs_f64(
-                                            val.abs(),
+                                            val.value.abs(),
                                         ))
                                         .unwrap()
-                                            * if val.is_sign_positive() { 1 } else { -1 })
+                                            * if val.value.is_sign_positive() { 1 } else { -1 })
                                     .format("%H:%M")
                                     .to_string()
                                 })

@@ -29,51 +29,48 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::spawn(async move {
         let update_stream = events.map(|event| async {
-            match event {
-                CentralEvent::ServiceDataAdvertisement { id, service_data } => {
-                    if let Some(data) = service_data.get(&uuid_from_u16(0x181c)) {
-                        let peripherals = central.peripherals().await.unwrap();
+            if let CentralEvent::ServiceDataAdvertisement { id, service_data } = event {
+                if let Some(data) = service_data.get(&uuid_from_u16(0x181c)) {
+                    let peripherals = central.peripherals().await.unwrap();
 
-                        let Some(peripheral) = peripherals.iter().find(|p| p.id() == id) else {
-                            eprintln!("got ad from unknown peripheral");
-                            return vec![];
-                        };
+                    let Some(peripheral) = peripherals.iter().find(|p| p.id() == id) else {
+                        eprintln!("got ad from unknown peripheral");
+                        return vec![];
+                    };
 
-                        let Some(properties) = peripheral.properties().await.unwrap() else {
-                            eprintln!("got ad from peripheral with no properties");
-                            return vec![];
-                        };
+                    let Some(properties) = peripheral.properties().await.unwrap() else {
+                        eprintln!("got ad from peripheral with no properties");
+                        return vec![];
+                    };
 
-                        let Some(name) = properties.local_name else {
-                            eprintln!("got ad from peripheral with no name");
-                            return vec![];
-                        };
+                    let Some(name) = properties.local_name else {
+                        eprintln!("got ad from peripheral with no name");
+                        return vec![];
+                    };
 
-                        let mut objects = bthome::decode(data.as_slice())
-                            .await
-                            .into_iter()
-                            .filter(|obj| match obj {
-                                Object::Temperature(_) | Object::Humidity(_) => true,
-                                Object::Battery(_) | Object::Voltage(_) | Object::Power(_) => false,
-                                Object::Rssi(_) => unreachable!(),
-                            })
-                            .map(|object| Update {
-                                name: name.clone(),
-                                object,
-                            })
-                            .collect::<Vec<_>>();
+                    let mut objects = bthome::decode(data.as_slice())
+                        .await
+                        .into_iter()
+                        .filter(|obj| match obj {
+                            Object::Temperature(_) | Object::Humidity(_) => true,
+                            Object::Battery(_) | Object::Voltage(_) | Object::Power(_) => false,
+                            Object::Rssi(_) => unreachable!(),
+                        })
+                        .map(|object| Update {
+                            name: name.clone(),
+                            object,
+                        })
+                        .collect::<Vec<_>>();
 
-                        if let Some(rssi) = properties.rssi {
-                            objects.push(Update {
-                                name: name.clone(),
-                                object: Object::Rssi(rssi),
-                            });
-                        }
-
-                        return objects;
+                    if let Some(rssi) = properties.rssi {
+                        objects.push(Update {
+                            name: name.clone(),
+                            object: Object::Rssi(rssi),
+                        });
                     }
+
+                    return objects;
                 }
-                _ => {}
             }
 
             vec![]
@@ -88,5 +85,5 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    app2d::run(rx)
+    tokio::task::block_in_place(|| app2d::run(rx))
 }
