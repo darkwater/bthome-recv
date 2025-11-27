@@ -1,0 +1,118 @@
+name: Build Binaries
+
+on:
+  - push
+  - release
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86-64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: default
+            artifact_name: bthome-recv
+            asset_name: bthome-recv-linux-x86_64
+
+          # Linux ARM (Raspberry Pi)
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            features: none
+            artifact_name: bthome-recv
+            asset_name: bthome-recv-linux-aarch64
+
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            features: default
+            artifact_name: bthome-recv.exe
+            asset_name: bthome-recv-windows-x86_64.exe
+
+          # macOS x86-64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            features: default
+            artifact_name: bthome-recv
+            asset_name: bthome-recv-macos-x86_64
+
+          # macOS ARM64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            features: default
+            artifact_name: bthome-recv
+            asset_name: bthome-recv-macos-aarch64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary (with default features)
+        if: matrix.features == 'default'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build binary (without default features)
+        if: matrix.features == 'none'
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features
+
+      - name: Strip binary (Linux and macOS)
+        if: runner.os != 'Windows'
+        run: |
+          if [ -f target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ]; then
+            strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }} || echo "Strip failed, continuing anyway"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+      - name: Rename binary for release
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} release-artifacts/${{ matrix.asset_name }}
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/${{ matrix.asset_name }}
