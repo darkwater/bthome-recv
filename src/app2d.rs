@@ -5,13 +5,13 @@ use std::{
 };
 
 use chrono::{DateTime, Local};
-use eframe::{egui, CreationContext};
+use eframe::{CreationContext, egui};
 use egui::{Align, CentralPanel, TopBottomPanel};
 use egui_extras::StripBuilder;
 use egui_plot::{Legend, Line, Plot, Points};
 use serde::{Deserialize, Serialize};
 
-use crate::{bthome::Object, Update};
+use crate::{Update, bthome::Object};
 
 pub fn run(rx: Receiver<Update>) -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -131,8 +131,8 @@ impl eframe::App for BtHomeApp {
 
                             Plot::new(objtype)
                                 .legend(Legend::default())
-                                .link_axis("plots", true, false)
-                                .link_cursor("plots", true, false)
+                                .link_axis("plots", [true, false])
+                                .link_cursor("plots", [true, false])
                                 .include_x(
                                     Local::now()
                                         .signed_duration_since(self.state.start_time)
@@ -169,10 +169,8 @@ impl eframe::App for BtHomeApp {
                                             .map(|val| [val.time.as_secs_f64(), val.value])
                                             .collect::<Vec<_>>();
 
-                                        plot.line(
-                                            Line::new(points.clone()).name(series.to_string()),
-                                        );
-                                        plot.points(Points::new(points).name(series.to_string()));
+                                        plot.line(Line::new(series, points.clone()));
+                                        plot.points(Points::new(series, points));
                                     }
                                 });
                         });

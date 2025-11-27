@@ -31,7 +31,10 @@ pub async fn decode(mut data: impl Buf) -> Vec<Object> {
             (2, 1) => data.get_i8() as f32,
             (3, 1) => data.get_i16_le() as f32,
             (5, 2) => data.get_f32_le(),
-            _ => unimplemented!(),
+            _ => {
+                eprintln!("unimplemented length/type combo: len={}, type={}", len, ty);
+                continue;
+            }
         };
 
         let obj = match object_id {
@@ -40,7 +43,10 @@ pub async fn decode(mut data: impl Buf) -> Vec<Object> {
             0x03 => Object::Humidity(value * 0.01),
             0x0c => Object::Voltage(value * 0.001),
             0x10 => Object::Power(value > 0.),
-            _ => unimplemented!(),
+            _ => {
+                eprintln!("unknown object id: {:#02x}", object_id);
+                continue;
+            }
         };
 
         out.push(obj);
