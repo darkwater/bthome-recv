@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::mpsc::Receiver,
     time::Duration,
 };
 
@@ -10,10 +9,11 @@ use egui::{Align, CentralPanel, TopBottomPanel};
 use egui_extras::StripBuilder;
 use egui_plot::{Legend, Line, Plot, Points};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{Update, bthome::Object};
 
-pub fn run(rx: Receiver<Update>) -> anyhow::Result<()> {
+pub fn run(rx: UnboundedReceiver<Update>) -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
 
     eframe::run_native(
@@ -62,11 +62,11 @@ impl Default for State {
 
 struct BtHomeApp {
     state: State,
-    rx: Receiver<Update>,
+    rx: UnboundedReceiver<Update>,
 }
 
 impl BtHomeApp {
-    fn new(rx: Receiver<Update>, cc: &CreationContext<'_>) -> Self {
+    fn new(rx: UnboundedReceiver<Update>, cc: &CreationContext<'_>) -> Self {
         BtHomeApp {
             state: cc
                 .storage

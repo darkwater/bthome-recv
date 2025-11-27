@@ -10,6 +10,19 @@ pub enum Object {
     Rssi(i16),
 }
 
+impl Object {
+    pub fn prometheus_name(&self) -> &'static str {
+        match self {
+            Object::Battery(_) => "battery_percentage",
+            Object::Temperature(_) => "temperature_celsius",
+            Object::Humidity(_) => "humidity_percentage",
+            Object::Voltage(_) => "voltage_volts",
+            Object::Power(_) => "power_on",
+            Object::Rssi(_) => "rssi_dbm",
+        }
+    }
+}
+
 pub async fn decode(mut data: impl Buf) -> Vec<Object> {
     data.copy_to_bytes(3);
 
@@ -19,10 +32,10 @@ pub async fn decode(mut data: impl Buf) -> Vec<Object> {
         let header = data.get_u8();
         let len = header & 0b11111;
         let ty = header >> 5;
-        // println!("len: {}, ty: {}", len, ty);
+        log::trace!("len: {}, ty: {}", len, ty);
 
         let mut data = data.copy_to_bytes(len as usize);
-        // println!("{:#02x?}", &data[..]);
+        log::trace!("{:#02x?}", &data[..]);
 
         let object_id = data.get_u8();
         let value = match (len, ty) {
@@ -32,7 +45,7 @@ pub async fn decode(mut data: impl Buf) -> Vec<Object> {
             (3, 1) => data.get_i16_le() as f32,
             (5, 2) => data.get_f32_le(),
             _ => {
-                eprintln!("unimplemented length/type combo: len={}, type={}", len, ty);
+                log::warn!("unimplemented length/type combo: len={}, type={}", len, ty);
                 continue;
             }
         };
@@ -44,7 +57,7 @@ pub async fn decode(mut data: impl Buf) -> Vec<Object> {
             0x0c => Object::Voltage(value * 0.001),
             0x10 => Object::Power(value > 0.),
             _ => {
-                eprintln!("unknown object id: {:#02x}", object_id);
+                log::warn!("unknown object id: {:#02x}", object_id);
                 continue;
             }
         };

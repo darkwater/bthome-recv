@@ -2,11 +2,14 @@ use bthome::Object;
 use btleplug::api::bleuuid::uuid_from_u16;
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::Manager;
+use clap::Parser;
 use futures::StreamExt;
 use tokio::pin;
 
+#[cfg(feature = "egui")]
 mod app2d;
 mod bthome;
+mod prometheus;
 
 #[derive(Debug, PartialEq)]
 pub struct Update {
@@ -14,8 +17,26 @@ pub struct Update {
     object: Object,
 }
 
+#[derive(clap::Parser)]
+#[command(version, about)]
+struct Opts {
+    #[clap(subcommand)]
+    frontend: Frontend,
+}
+
+#[derive(clap::Subcommand)]
+enum Frontend {
+    #[cfg(feature = "egui")]
+    Egui,
+    Prometheus,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let opts = Opts::parse();
+
+    pretty_env_logger::init();
+
     let manager = Manager::new().await?;
 
     let adapters = manager.adapters().await?;
@@ -25,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     central.start_scan(ScanFilter::default()).await?;
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
     tokio::spawn(async move {
         let update_stream = events.map(|event| async {
@@ -34,28 +55,23 @@ async fn main() -> anyhow::Result<()> {
                     let peripherals = central.peripherals().await.unwrap();
 
                     let Some(peripheral) = peripherals.iter().find(|p| p.id() == id) else {
-                        eprintln!("got ad from unknown peripheral");
+                        log::warn!("got ad from unknown peripheral");
                         return vec![];
                     };
 
                     let Some(properties) = peripheral.properties().await.unwrap() else {
-                        eprintln!("got ad from peripheral with no properties");
+                        log::warn!("got ad from peripheral with no properties");
                         return vec![];
                     };
 
                     let Some(name) = properties.local_name else {
-                        eprintln!("got ad from peripheral with no name");
+                        log::warn!("got ad from peripheral with no name");
                         return vec![];
                     };
 
                     let mut objects = bthome::decode(data.as_slice())
                         .await
                         .into_iter()
-                        .filter(|obj| match obj {
-                            Object::Temperature(_) | Object::Humidity(_) => true,
-                            Object::Battery(_) | Object::Voltage(_) | Object::Power(_) => false,
-                            Object::Rssi(_) => unreachable!(),
-                        })
                         .map(|object| Update {
                             name: name.clone(),
                             object,
@@ -85,5 +101,12 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    tokio::task::block_in_place(|| app2d::run(rx))
+    match opts.frontend {
+        #[cfg(feature = "egui")]
+        Frontend::Egui => {
+            // gui must happen on the main thread on macOS
+            tokio::task::block_in_place(|| app2d::run(rx))
+        }
+        Frontend::Prometheus => prometheus::run(rx).await,
+    }
 }
